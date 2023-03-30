@@ -809,7 +809,7 @@ const F_GETFL = Cint(3)
 const F_SETFL = Cint(4)
 const O_NONBLOCK = Cint(0o00004000)
 
-function main()
+function run(game, profile)
     atexit(cleanup)
     s :: RawFD = RawFD(Base.Core.Integer(0))
     flags = ccall(:fcntl, Cint, (RawFD, Cint, Cint...), s, F_GETFL)
@@ -819,11 +819,8 @@ function main()
     ccall(:fcntl, Cint, (RawFD, Cint, Cint...), s, F_SETFL, flags2)
     print("\033[?25l") # hide cursor
     Base.exit_on_sigint(false)
-    game = ARGS[1]
-    if length(ARGS) > 1
-        if ARGS[2] == "profile"
-            TimerOutputs.enable_timer!(to)
-        end
+    if profile
+        TimerOutputs.enable_timer!(to)
     end
     try
         if game == "cars"
@@ -836,7 +833,7 @@ function main()
             cars()
         end
     catch e
-        if isa(e, TaskFailedException)
+        while isa(e, TaskFailedException)
             e = e.task.exception
         end
         if isa(e, Core.InterruptException)
@@ -848,6 +845,20 @@ function main()
         TERMIOS.tcsetattr(stdin, TERMIOS.TCSANOW, backup_termios)
         cleanup()
     end
+end
+
+function main()
+    game = "cars"
+    profile = false
+    if length(ARGS) > 0
+        game = ARGS[1]
+    end
+    if length(ARGS) > 1
+        if ARGS[2] == "profile"
+            profile = true
+        end
+    end
+    run(game, profile)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
