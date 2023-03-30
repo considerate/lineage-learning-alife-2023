@@ -64,7 +64,6 @@
             pkgs.libtool
             pkgs.ocl-icd
             # dev environment
-            pkgs.neovim
             pkgs.glxinfo
 
             pkgs.silver-searcher
@@ -72,6 +71,12 @@
             # pkgs.valgrind
             # pkgs.zee
             # pkgs.helix
+            pkgs.cudaPackages.cudatoolkit
+            pkgs.cudaPackages.cudnn
+            (pkgs.runCommand "openblas64_" { } ''
+              mkdir -p $out/lib/
+              ln -s ${pkgs.openblasCompat}/lib/libopenblas.so $out/lib/libopenblas64_.so.0
+            '')
           ];
           fhs = pkgs.buildFHSUserEnv {
             name = "mimicry-env";
@@ -82,10 +87,12 @@
             ];
             runScript = ''bash --noprofile --norc'';
           };
+          julia = pkgs.callPackage ./julia.nix { };
         in
         {
           legacyPackages = pkgs;
           packages.fhs = fhs;
+          packages.julia = julia;
           devShells.fhs = fhs.env.overrideAttrs (old: {
             # LD_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}/lib:/run/opengl-driver/lib:${pkgs.lib.strings.makeLibraryPath (targets pkgs)}";
             #shellHook = (old.shellHook or "") + ''
@@ -94,11 +101,19 @@
           });
           devShells.default = pkgs.stdenv.mkDerivation {
             name = "julia-shell";
-            LD_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}/lib:/run/opengl-driver/lib:${pkgs.lib.strings.makeLibraryPath (targets pkgs)}";
+            shellHook = ''
+              export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:/run/opengl-driver/lib:${pkgs.lib.strings.makeLibraryPath (targets pkgs)}";
+              export JULIA_CUDA_USE_BINARYBUILDER=false;
+              export CUDA_PATH=${pkgs.cudaPackages.cudatoolkit}
+              export EXTRA_LDFLAGS="-L/lib -L${pkgs.linuxPackages.nvidia_x11}/lib"
+              export EXTRA_CCFLAGS="-I/usr/include"
+            '';
             buildInputs = [
               pkgs.ffmpeg
               pkgs.xvfb-run
-              pkgs.julia
+              julia
+              pkgs.cudaPackages.cudatoolkit
+              pkgs.cudaPackages.cudnn
             ];
           };
         })
