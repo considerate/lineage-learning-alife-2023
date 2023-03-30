@@ -38,37 +38,6 @@ function cleanup()
     print("\033[?25h") # show cursor
 end
 
-#
-#  sensor_0   memory_0
-#     x    x   x
-#    turn_0  (memory_1 (+) memory_0)
-#
-#  sensor_1  memory_1
-#    x  x    x
-#    turn_1 (memory_2 (+) memory_1)
-#
-#  sensor_n  memory_n
-#    x  x    x
-#    turn_n memory_(n+1)
-#
-#
-# RNN(sensor_(n-21), memory_(n-21), θ) = {turn_(n-20) ... turn_(n+1)}
-# L(RNN)
-
-# p(turn_0, ..., turn_n | memory_0, sensor_0, ..., sensor_n, theta)
-
-# p(turn = 'L' | memory, sensor, theta) = sigmoid(...)
-#
-# (y,m') = W(x,m)j
-# loss_0 ~ L(fst(W(x_0, m_0)))
-# loss_1 ~ L(fst(W(x_1, m_1))) = L(fst(W(x_1, snd(W(x_0, m_0)))))
-# loss_0 + loss_1 = L(fst(W(x_0, m_0))) + L(fst(W(x_1, snd(W(x_0, m_0)))))
-#
-#
-# loss_0 + .... + loss_n
-#
-#
-
 struct Body
     x::Float32
     y::Float32
@@ -85,7 +54,7 @@ end
 
 
 # A Car decides:
-# - what angle to turn using a gaussian
+# - what angle to turn using a softmaxed probability
 mutable struct Car
     age :: Int64
     lineage :: Int64
@@ -97,10 +66,6 @@ mutable struct Car
     optimiser_state :: NamedTuple
     last_died :: Int64
 end
-
-
-# model = CarModel(Lux.LSTMCell(...), Lux.Dense(..), Lux.Dense(..))
-# (means, logvars, new_carry) = model((x,carry), ps, st)
 
 # Run one step through the model
 function (model::CarModel)(inputs :: Tuple{AbstractMatrix, AbstractMatrix, Carry}, ps :: NamedTuple, st :: NamedTuple)
@@ -125,9 +90,6 @@ function sequence_loss(model :: CarModel, initialcarry :: Carry, sequence :: Vec
             println(means, logvars, sampled)
             error("Infinite loss")
         end
-        # instead of adding the loss at each step
-        # let's do traditional horizon prediction and only
-        # apply the loss for the predicted values
         loss = loss + logloss(motors, sampled)
     end
     return loss, st
@@ -169,9 +131,6 @@ end
 
 function Car(rng, learning_rate, sensorSize, motorSize, arena, batchsize=1)
     (a,b,c) = (40,30,20)
-    min_var = Float32(0.1)
-    min_logvar = log(min_var)
-    max_logvar = Float32(10)
     model = CarModel(Lux.LSTMCell(sensorSize => a, use_bias=true),
                      Lux.LSTMCell(a => b, use_bias=true),
                      Lux.LSTMCell(b => c, use_bias=true),
@@ -403,7 +362,6 @@ end
 function sample(rng, means::Matrix{Float32},logvars::Matrix{Float32})::Tuple{Matrix{Float32}, Matrix{Float32}}
     sigma = exp.(logvars.*Float32(0.5))
     normals = Random.randn(rng, Float32, size(means))
-    # println(uniforms, sigma, means)
     return (normals, normals.*sigma .+ means)
 end
 
@@ -746,7 +704,7 @@ function cars()
         makie_bodies[] = [agent.body for agent in agents]
         makie_sensors[] = sensorPoints(agents[1].body, sensorParams)
         makie_trails[] = copy(trails)
-        yield() # TODO: replace with yield() if that works
+        yield()
         if frame % 100 == 0 && !showwindow
             filename = string(rundir, "/frames/","frame-",frame,".png")
             GLMakie.save(filename, fig)
@@ -814,7 +772,7 @@ const F_GETFL = Cint(3)
 const F_SETFL = Cint(4)
 const O_NONBLOCK = Cint(0o00004000)
 
-function run(game, profile)
+function run()
     atexit(cleanup)
     s :: RawFD = RawFD(Base.Core.Integer(0))
     flags = ccall(:fcntl, Cint, (RawFD, Cint, Cint...), s, F_GETFL)
@@ -824,19 +782,8 @@ function run(game, profile)
     ccall(:fcntl, Cint, (RawFD, Cint, Cint...), s, F_SETFL, flags2)
     print("\033[?25l") # hide cursor
     Base.exit_on_sigint(false)
-    if profile
-        TimerOutputs.enable_timer!(to)
-    end
     try
-        if game == "cars"
-            cars()
-        elseif game == "animals"
-            animals()
-        elseif game == "grads"
-            grads()
-        else
-            cars()
-        end
+        cars()
     catch e
         while isa(e, TaskFailedException)
             e = e.task.exception
@@ -853,17 +800,7 @@ function run(game, profile)
 end
 
 function main()
-    game = "cars"
-    profile = false
-    if length(ARGS) > 0
-        game = ARGS[1]
-    end
-    if length(ARGS) > 1
-        if ARGS[2] == "profile"
-            profile = true
-        end
-    end
-    run(game, profile)
+    run()
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
