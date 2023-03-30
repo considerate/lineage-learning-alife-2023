@@ -33,7 +33,6 @@ const Parent = Int64
 to = TimerOutput()
 TimerOutputs.disable_timer!(to)
 
-GLMakie.activate!()
 
 function cleanup()
     print("\033[?25h") # show cursor
@@ -587,6 +586,7 @@ function plot_cars(arena, trails, agents, sensorParams)
 end
 
 function cars()
+    GLMakie.activate!()
     Base.start_reading(stdin)
     started = time_ns()
     # (arena, MAX_TRAIL, section, sections) = createLetterArena()
@@ -614,11 +614,14 @@ function cars()
     expectancy = 0.0
     MAX_HISTORY = 100
     empty :: Matrix{Float32} = Float32.([0.0 0.0])
-    showwindow = false
+    showwindow = true
     frames = 1:100000
     deathsperframe = 0.0
     halflife = 250.0 # frames
     decay = 1 - 2^(-1/halflife)
+    if !isdir("runs")
+        mkdir("runs")
+    end
     rundir = string("runs/", Dates.now())
     mkdir(rundir)
     mkdir(string(rundir, "/frames"))
@@ -626,7 +629,7 @@ function cars()
     crashcolumns = join([string("crash_",c) for c in 1:sections], ",")
     columns = string("frame,deaths,deaths_per_frame,max_age,mean_age,loss", ",", exitcolumns, ",", crashcolumns)
     if showwindow
-        display(fig)
+        display(GLMakie.Screen(), fig)
         loop = f -> open(string(rundir,"/mimicry.csv"), "w+") do io
             println(io,columns)
             foreach(x -> f(x, io), frames)
@@ -637,8 +640,10 @@ function cars()
             GLMakie.record(x -> f(x,io), fig, string(rundir,"/animation.mp4"), frames; framerate=12, compression=20)
         end
     end
-    filename = string(rundir, "/frames/","frame-",0,".png")
-    GLMakie.save(filename, fig)
+    if !showwindow
+        filename = string(rundir, "/frames/","frame-",0,".png")
+        GLMakie.save(filename, fig)
+    end
     loop() do frame, csv
         motorss :: Vector{Matrix{Float32}} = [empty for _ in agents]
         Threads.@threads for k in 1:length(agents)
@@ -742,7 +747,7 @@ function cars()
         makie_sensors[] = sensorPoints(agents[1].body, sensorParams)
         makie_trails[] = copy(trails)
         yield() # TODO: replace with yield() if that works
-        if frame % 100 == 0
+        if frame % 100 == 0 && !showwindow
             filename = string(rundir, "/frames/","frame-",frame,".png")
             GLMakie.save(filename, fig)
         end
