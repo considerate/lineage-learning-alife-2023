@@ -5,3 +5,9 @@
 ```console
 $ julia --project -e 'import Pkg; Pkg.instantiate();'
 ```
+
+## Running
+
+```console
+$ julia --threads=auto --project src/Lineages.jl
+```
