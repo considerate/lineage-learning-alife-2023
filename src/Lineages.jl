@@ -1,4 +1,4 @@
-module Mimicry
+module Lineages
 
 import UnicodePlots
 import Zygote
